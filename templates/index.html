@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Умный трекер витаминов и здоровья</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        [x-cloak] { display: none !important; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col justify-between" x-data="app()">
+
+    <!-- HEADER / NAVBAR -->
+    <header class="bg-white border-b border-teal-100 sticky top-0 z-30 shadow-xs" x-show="user">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl overflow-hidden shadow-md shadow-teal-100 flex items-center justify-center bg-gradient-to-br from-cyan-500 to-teal-600 text-white font-bold">
+                    <img src="/static/logo.svg" alt="Логотип" class="w-full h-full object-cover">
+                </div>
+                <div>
+                    <h1 class="font-bold text-slate-900 leading-tight text-base">ВитаминТрекер</h1>
+                    <p class="text-xs text-teal-600 font-medium" x-text="user.email"></p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <!-- Notifications Bell -->
+                <div class="relative" x-data="{ open: false }">
+                    <button @click="open = !open; fetchNotifications()" class="relative p-2 text-slate-600 hover:text-teal-600 focus:outline-none transition rounded-xl hover:bg-teal-50">
+                        <i class="fa-solid fa-bell text-lg"></i>
+                        <span x-show="unreadCount > 0" class="absolute top-1 right-1 bg-rose-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center" x-text="unreadCount"></span>
+                    </button>
+                    <!-- Notifications Dropdown -->
+                    <div x-show="open" @click.outside="open = false" x-cloak class="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-teal-50 py-2 z-50">
+                        <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center">
+                            <span class="font-bold text-xs text-slate-800">Журнал уведомлений</span>
+                            <span class="text-xs text-teal-600 cursor-pointer font-medium hover:underline" @click="notifications.forEach(n => markRead(n.id))">Прочитать все</span>
+                        </div>
+                        <div class="max-h-64 overflow-y-auto divide-y divide-slate-50">
+                            <template x-for="notif in notifications" :key="notif.id">
+                                <div class="px-4 py-3 hover:bg-teal-50/40 transition cursor-pointer" :class="{ 'bg-teal-50/60': !notif.is_read }" @click="markRead(notif.id)">
+                                    <div class="flex justify-between items-start">
+                                        <h4 class="text-xs font-bold text-slate-900" x-text="notif.title"></h4>
+                                        <span class="text-[10px] text-slate-400" x-text="formatDate(notif.created_at)"></span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 mt-1" x-text="notif.message"></p>
+                                </div>
+                            </template>
+                            <template x-if="notifications.length === 0">
+                                <div class="px-4 py-6 text-center text-xs text-slate-400">Нет уведомлений</div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logout Button -->
+                <button @click="logout()" class="text-slate-500 hover:text-rose-600 p-2 transition rounded-xl hover:bg-rose-50" title="Выйти">
+                    <i class="fa-solid fa-right-from-bracket text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-6 pb-24 md:pb-8">
+
+        <!-- AUTH SCREEN (LOGIN / REGISTER) -->
+        <div x-show="!user" x-cloak class="max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-teal-100 p-8 my-8">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-teal-200 mb-4 overflow-hidden bg-gradient-to-br from-cyan-500 to-teal-600">
+                    <img src="/static/logo.svg" alt="Логотип" class="w-full h-full object-cover">
+                </div>
+                <h2 class="text-2xl font-bold text-slate-900">Умный трекер здоровья</h2>
+                <p class="text-sm text-teal-600 font-medium mt-1">Профилактика и баланс витаминов</p>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div class="flex bg-slate-100 p-1 rounded-2xl mb-6">
+                <button @click="authMode = 'login'; authError = ''" :class="{ 'bg-teal-600 text-white shadow-md': authMode === 'login', 'text-slate-600': authMode !== 'login' }" class="flex-1 py-2.5 text-xs font-bold rounded-xl transition">Вход</button>
+                <button @click="authMode = 'register'; authError = ''" :class="{ 'bg-teal-600 text-white shadow-md': authMode === 'register', 'text-slate-600': authMode !== 'register' }" class="flex-1 py-2.5 text-xs font-bold rounded-xl transition">Регистрация</button>
+            </div>
+
+            <!-- Error message -->
+            <div x-show="authError" x-cloak class="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium" x-text="authError"></div>
+
+            <form @submit.prevent="submitAuth()">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                        <input type="email" x-model="authEmail" required class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none text-sm transition bg-slate-50/50" placeholder="name@example.com">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Пароль (мин. 6 символов)</label>
+                        <input type="password" x-model="authPassword" required class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none text-sm transition bg-slate-50/50" placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-teal-200 transition text-sm">
+                        <span x-text="authMode === 'login' ? 'Войти в систему' : 'Зарегистрироваться'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ONBOARDING MODAL -->
+        <div x-show="user && user.onboarding_completed === 0" x-cloak class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl border border-teal-100 text-center relative overflow-hidden">
+                <div class="absolute top-4 right-4">
+                    <button @click="completeOnboarding()" class="text-xs text-slate-400 hover:text-slate-600 font-semibold px-3 py-1.5 bg-slate-100 rounded-xl transition">Пропустить</button>
+                </div>
+
+                <!-- Onboarding Step 1 -->
+                <div x-show="onboardingStep === 1">
+                    <div class="w-20 h-20 bg-teal-50 text-teal-600 rounded-3xl mx-auto flex items-center justify-center text-3xl mb-6 shadow-md shadow-teal-100">
+                        <i class="fa-solid fa-shield-heart"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-2">Профилактика здоровья</h3>
+                    <p class="text-sm text-slate-600 mb-8">Следите за балансом витаминов, получайте персональные рекомендации и поддерживайте бодрость каждый день.</p>
+                </div>
+
+                <!-- Onboarding Step 2 -->
+                <div x-show="onboardingStep === 2">
+                    <div class="w-20 h-20 bg-teal-50 text-teal-600 rounded-3xl mx-auto flex items-center justify-center text-3xl mb-6 shadow-md shadow-teal-100">
+                        <i class="fa-solid fa-pills"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-2">Умный трекер приёма</h3>
+                    <p class="text-sm text-slate-600 mb-8">Добавляйте витамины, отмечайте прием по расписанию и отслеживайте историю за любую дату.</p>
+                </div>
+
+                <!-- Onboarding Step 3 -->
+                <div x-show="onboardingStep === 3">
+                    <div class="w-20 h-20 bg-teal-50 text-teal-600 rounded-3xl mx-auto flex items-center justify-center text-3xl mb-6 shadow-md shadow-teal-100">
+                        <i class="fa-solid fa-file-medical"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 mb-2">Анализы и отчёты</h3>
+                    <p class="text-sm text-slate-600 mb-8">Загружайте PDF с результатами анализов и проходите опрос для получения персонализированных рекомендаций.</p>
+                </div>
+
+                <!-- Onboarding Buttons -->
+                <div class="flex items-center justify-between mt-6">
+                    <button x-show="onboardingStep > 1" @click="onboardingStep--" class="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition">Назад</button>
+                    <div class="flex space-x-1.5 mx-auto">
+                        <span class="w-2.5 h-2.5 rounded-full transition-all" :class="onboardingStep === 1 ? 'bg-teal-600 w-6' : 'bg-slate-200'"></span>
+                        <span class="w-2.5 h-2.5 rounded-full transition-all" :class="onboardingStep === 2 ? 'bg-teal-600 w-6' : 'bg-slate-200'"></span>
+                        <span class="w-2.5 h-2.5 rounded-full transition-all" :class="onboardingStep === 3 ? 'bg-teal-600 w-6' : 'bg-slate-200'"></span>
+                    </div>
+                    <button @click="onboardingStep < 3 ? onboardingStep++ : completeOnboarding()" class="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-200 transition" x-text="onboardingStep === 3 ? 'Начать' : 'Далее'"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN APP CONTENT -->
+        <div x-show="user && user.onboarding_completed === 1" x-cloak>
+
+            <!-- TAB 1: TRACKER -->
+            <div x-show="activeTab === 'tracker'">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-900">Трекер витаминов</h2>
+                        <p class="text-xs text-teal-600 font-medium">Контроль ежедневного приёма добавок</p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <input type="date" x-model="selectedDate" @change="loadVitamins()" class="px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-teal-500 outline-none bg-white shadow-xs">
+                        <button @click="showAddVitaminModal = true" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md shadow-teal-200 transition flex items-center space-x-2">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Добавить витамин</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Vitamins List -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <template x-for="item in vitamins" :key="item.id">
+                        <div class="bg-white rounded-2xl p-5 border border-teal-50 shadow-sm flex items-center justify-between transition hover:shadow-md hover:border-teal-200">
+                            <div class="flex items-center space-x-4">
+                                <button @click="toggleVitaminStatus(item)" class="w-11 h-11 rounded-xl flex items-center justify-center transition shadow-xs" :class="item.status === 'taken' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400 hover:bg-teal-50 hover:text-teal-600'">
+                                    <i class="fa-solid" :class="item.status === 'taken' ? 'fa-check text-base font-bold' : 'fa-circle text-xs'"></i>
+                                </button>
+                                <div>
+                                    <h4 class="font-bold text-sm text-slate-900" :class="{ 'line-through text-slate-400': item.status === 'taken' }" x-text="item.name"></h4>
+                                    <div class="flex items-center space-x-2 mt-1">
+                                        <span class="text-xs text-teal-700 font-bold bg-teal-50 px-2.5 py-0.5 rounded-md" x-text="item.dosage"></span>
+                                        <span class="text-xs text-slate-300">•</span>
+                                        <span class="text-xs text-slate-500 font-medium" x-text="item.time_of_day"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button @click="deleteVitamin(item.id)" class="text-slate-300 hover:text-rose-500 p-2.5 transition rounded-xl hover:bg-rose-50">
+                                <i class="fa-solid fa-trash-can text-sm"></i>
+                            </button>
+                        </div>
+                    </template>
+                    <template x-if="vitamins.length === 0">
+                        <div class="col-span-2 bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-xs">
+                            <div class="w-14 h-14 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-md shadow-teal-100">
+                                <i class="fa-solid fa-pills text-xl"></i>
+                            </div>
+                            <p class="text-sm font-bold text-slate-800">На этот день витамины не добавлены</p>
+                            <p class="text-xs text-slate-500 mt-1">Нажмите кнопку «Добавить витамин», чтобы сформировать расписание</p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- TAB 2: SURVEY & REPORT -->
+            <div x-show="activeTab === 'survey'">
+                <div class="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-teal-100 shadow-sm">
+                    <div class="text-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-900">Опрос состояния здоровья</h2>
+                        <p class="text-xs text-teal-600 font-medium mt-1">Ответьте на 5 вопросов для генерации персонального отчёта</p>
+                    </div>
+
+                    <!-- Survey Questions Flow -->
+                    <div x-show="!surveyCompleted && !existingReport">
+                        <!-- Q1 -->
+                        <div x-show="surveyStep === 1">
+                            <label class="block text-sm font-bold text-slate-900 mb-3">1. Как вы оцениваете качество вашего сна?</label>
+                            <div class="space-y-2.5">
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Меньше 6 часов, сплю плохо" x-model="surveyAnswers.sleep" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Меньше 6 часов, сплю плохо</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="6-7 часов, просыпаюсь уставшим" x-model="surveyAnswers.sleep" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">6-7 часов, просыпаюсь уставшим</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="7-8 часов, высыпаюсь отлично" x-model="surveyAnswers.sleep" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">7-8 часов, высыпаюсь отлично</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Q2 -->
+                        <div x-show="surveyStep === 2">
+                            <label class="block text-sm font-bold text-slate-900 mb-3">2. Какой у вас уровень ежедневной энергии?</label>
+                            <div class="space-y-2.5">
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Низкий, постоянная усталость" x-model="surveyAnswers.energy" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Низкий, постоянная усталость</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Средний, к вечеру силы иссякают" x-model="surveyAnswers.energy" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Средний, к вечеру силы иссякают</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Высокий, бодр весь день" x-model="surveyAnswers.energy" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Высокий, бодр весь день</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Q3 -->
+                        <div x-show="surveyStep === 3">
+                            <label class="block text-sm font-bold text-slate-900 mb-3">3. Как часто вы испытываете стресс?</label>
+                            <div class="space-y-2.5">
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Высокий, стресс каждый день" x-model="surveyAnswers.stress" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Высокий, стресс каждый день</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Умеренный, в рабочие дни" x-model="surveyAnswers.stress" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Умеренный, в рабочие дни</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Низкий, редко" x-model="surveyAnswers.stress" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Низкий, редко</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Q4 -->
+                        <div x-show="surveyStep === 4">
+                            <label class="block text-sm font-bold text-slate-900 mb-3">4. Как часто вы бываете на свежем воздухе и солнце?</label>
+                            <div class="space-y-2.5">
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Менее 30 минут в день" x-model="surveyAnswers.sun" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Менее 30 минут в день</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="1-2 часа в день" x-model="surveyAnswers.sun" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">1-2 часа в день</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Более 2 часов" x-model="surveyAnswers.sun" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Более 2 часов</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Q5 -->
+                        <div x-show="surveyStep === 5">
+                            <label class="block text-sm font-bold text-slate-900 mb-3">5. Какова ваша главная цель по здоровью?</label>
+                            <div class="space-y-2.5">
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Повысить энергию и бодрость" x-model="surveyAnswers.goal" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Повысить энергию и бодрость</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Укрепить иммунитет" x-model="surveyAnswers.goal" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Укрепить иммунитет</span>
+                                </label>
+                                <label class="flex items-center p-3.5 rounded-2xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/30 cursor-pointer transition">
+                                    <input type="radio" value="Нормализовать сон и снизить стресс" x-model="surveyAnswers.goal" class="text-teal-600 focus:ring-teal-500 mr-3 w-4 h-4">
+                                    <span class="text-sm font-medium text-slate-700">Нормализовать сон и снизить стресс</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Survey Buttons -->
+                        <div class="flex justify-between mt-8 pt-4 border-t border-slate-100">
+                            <button x-show="surveyStep > 1" @click="surveyStep--" class="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition">Назад</button>
+                            <div class="text-xs font-semibold text-slate-400 self-center" x-text="`Шаг ${surveyStep} из 5`"></div>
+                            <button @click="nextSurveyStep()" class="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-200 transition" x-text="surveyStep === 5 ? 'Завершить опрос' : 'Далее'"></button>
+                        </div>
+                    </div>
+
+                    <!-- Survey Report Display -->
+                    <div x-show="existingReport" x-cloak>
+                        <div class="prose prose-sm text-slate-700 mb-6" x-html="existingReport"></div>
+                        <div class="flex space-x-3">
+                            <button @click="retakeSurvey()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-xs transition">Пройти заново</button>
+                            <button @click="activeTab = 'landings'" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl text-xs shadow-md shadow-teal-200 transition">Перейти к продуктам</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: ANALYSES (PDF) -->
+            <div x-show="activeTab === 'analyses'">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-900">Медицинские анализы (PDF)</h2>
+                        <p class="text-xs text-teal-600 font-medium">Загрузка и хранение результатов обследований</p>
+                    </div>
+                    <label class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md shadow-teal-200 transition cursor-pointer flex items-center space-x-2 inline-flex">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Загрузить PDF</span>
+                        <input type="file" accept=".pdf" @change="uploadAnalysis($event)" class="hidden">
+                    </label>
+                </div>
+
+                <!-- Analyses List -->
+                <div class="bg-white rounded-3xl border border-teal-50 shadow-sm overflow-hidden">
+                    <div class="divide-y divide-slate-100">
+                        <template x-for="item in analyses" :key="item.id">
+                            <div class="p-4 flex items-center justify-between hover:bg-teal-50/20 transition">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center font-bold shadow-xs">
+                                        <i class="fa-solid fa-file-pdf text-lg"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold text-sm text-slate-900" x-text="item.filename"></h4>
+                                        <p class="text-[11px] text-slate-400 font-medium" x-text="'Загружено: ' + formatDate(item.uploaded_at)"></p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <a :href="`/api/analyses/${item.id}`" target="_blank" class="p-2.5 text-slate-400 hover:text-teal-600 transition rounded-xl hover:bg-teal-50" title="Скачать">
+                                        <i class="fa-solid fa-download text-sm"></i>
+                                    </a>
+                                    <button @click="deleteAnalysis(item.id)" class="p-2.5 text-slate-300 hover:text-rose-500 transition rounded-xl hover:bg-rose-50" title="Удалить">
+                                        <i class="fa-solid fa-trash-can text-sm"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="analyses.length === 0">
+                            <div class="p-12 text-center text-slate-400">
+                                <div class="w-14 h-14 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-md shadow-teal-100">
+                                    <i class="fa-solid fa-file-pdf text-xl"></i>
+                                </div>
+                                <p class="text-sm font-bold text-slate-800">Нет загруженных анализов</p>
+                                <p class="text-xs text-slate-500 mt-1">Загрузите файлы в формате PDF для хранения в вашем профиле</p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: PROFILE -->
+            <div x-show="activeTab === 'profile'">
+                <div class="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-teal-100 shadow-sm">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Профиль пользователя</h2>
+                            <p class="text-xs text-teal-600 font-medium">Личные данные и цели здоровья</p>
+                        </div>
+                        <div class="w-12 h-12 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center font-bold text-lg shadow-md shadow-teal-100">
+                            <i class="fa-solid fa-user"></i>
+                        </div>
+                    </div>
+
+                    <form @submit.prevent="updateProfile()">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Email (логин)</label>
+                                <input type="email" :value="user.email" disabled class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm font-medium">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">ФИО</label>
+                                <input type="text" x-model="profileForm.full_name" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 outline-none text-sm transition bg-slate-50/50" placeholder="Иванов Иван Иванович">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Пол</label>
+                                    <select x-model="profileForm.gender" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 outline-none text-sm bg-white transition font-medium">
+                                        <option value="Не указан">Не указан</option>
+                                        <option value="Мужской">Мужской</option>
+                                        <option value="Женский">Женский</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Возраст</label>
+                                    <input type="number" x-model="profileForm.age" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 outline-none text-sm transition bg-slate-50/50" min="10" max="120">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Цели здоровья</label>
+                                <input type="text" x-model="profileForm.health_goals" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 outline-none text-sm transition bg-slate-50/50" placeholder="Энергия, сон, иммунитет">
+                            </div>
+                            <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-teal-200 transition text-sm">Сохранить изменения</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- TAB 5: LANDINGS -->
+            <div x-show="activeTab === 'landings'">
+                <div class="mb-6">
+                    <h2 class="text-xl font-bold text-slate-900">Партнёрские продукты и лендинги</h2>
+                    <p class="text-xs text-teal-600 font-medium">Рекомендуемые комплексы для профилактики здоровья</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Card 1 -->
+                    <div class="bg-white rounded-3xl p-6 border border-teal-50 shadow-sm flex flex-col justify-between transition hover:shadow-md hover:border-teal-200">
+                        <div>
+                            <div class="w-12 h-12 bg-cyan-50 text-cyan-600 rounded-2xl flex items-center justify-center font-bold text-lg mb-4 shadow-sm">
+                                <i class="fa-solid fa-sun"></i>
+                            </div>
+                            <h3 class="font-bold text-slate-900 text-base mb-1">Витамин D3 + К2</h3>
+                            <p class="text-xs text-slate-500 mb-6 leading-relaxed">Премиум комплекс для поддержки иммунитета, крепости костей и энергетического баланса.</p>
+                        </div>
+                        <a href="https://iherb.com" target="_blank" class="w-full bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold py-3 rounded-xl text-xs transition text-center flex items-center justify-center space-x-2">
+                            <span>Перейти на лендинг</span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </a>
+                    </div>
+
+                    <!-- Card 2 -->
+                    <div class="bg-white rounded-3xl p-6 border border-teal-50 shadow-sm flex flex-col justify-between transition hover:shadow-md hover:border-teal-200">
+                        <div>
+                            <div class="w-12 h-12 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center font-bold text-lg mb-4 shadow-sm">
+                                <i class="fa-solid fa-moon"></i>
+                            </div>
+                            <h3 class="font-bold text-slate-900 text-base mb-1">Магний Хелат + B6</h3>
+                            <p class="text-xs text-slate-500 mb-6 leading-relaxed">Максимальная биодоступность для снятия стресса, улучшения засыпания и расслабления мышц.</p>
+                        </div>
+                        <a href="https://iherb.com" target="_blank" class="w-full bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold py-3 rounded-xl text-xs transition text-center flex items-center justify-center space-x-2">
+                            <span>Перейти на лендинг</span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </a>
+                    </div>
+
+                    <!-- Card 3 -->
+                    <div class="bg-white rounded-3xl p-6 border border-teal-50 shadow-sm flex flex-col justify-between transition hover:shadow-md hover:border-teal-200">
+                        <div>
+                            <div class="w-12 h-12 bg-cyan-50 text-cyan-600 rounded-2xl flex items-center justify-center font-bold text-lg mb-4 shadow-sm">
+                                <i class="fa-solid fa-fish"></i>
+                            </div>
+                            <h3 class="font-bold text-slate-900 text-base mb-1">Омега-3 Супер Оптимум</h3>
+                            <p class="text-xs text-slate-500 mb-6 leading-relaxed">Высокая концентрация EPA и DHA кислот для работы мозга, сердца и сосудов.</p>
+                        </div>
+                        <a href="https://iherb.com" target="_blank" class="w-full bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold py-3 rounded-xl text-xs transition text-center flex items-center justify-center space-x-2">
+                            <span>Перейти на лендинг</span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- BOTTOM MOBILE NAVIGATION BAR -->
+    <nav class="bg-white border-t border-teal-100 fixed bottom-0 left-0 right-0 z-30 shadow-lg md:hidden" x-show="user && user.onboarding_completed === 1" x-cloak>
+        <div class="flex justify-around items-center py-2">
+            <button @click="activeTab = 'tracker'" :class="{ 'text-teal-600 font-bold': activeTab === 'tracker', 'text-slate-400': activeTab !== 'tracker' }" class="flex flex-col items-center flex-1 py-1 transition">
+                <i class="fa-solid fa-pills text-lg"></i>
+                <span class="text-[10px] mt-1 font-semibold">Трекер</span>
+            </button>
+            <button @click="activeTab = 'survey'" :class="{ 'text-teal-600 font-bold': activeTab === 'survey', 'text-slate-400': activeTab !== 'survey' }" class="flex flex-col items-center flex-1 py-1 transition">
+                <i class="fa-solid fa-clipboard-question text-lg"></i>
+                <span class="text-[10px] mt-1 font-semibold">Опрос</span>
+            </button>
+            <button @click="activeTab = 'analyses'" :class="{ 'text-teal-600 font-bold': activeTab === 'analyses', 'text-slate-400': activeTab !== 'analyses' }" class="flex flex-col items-center flex-1 py-1 transition">
+                <i class="fa-solid fa-file-medical text-lg"></i>
+                <span class="text-[10px] mt-1 font-semibold">Анализы</span>
+            </button>
+            <button @click="activeTab = 'landings'" :class="{ 'text-teal-600 font-bold': activeTab === 'landings', 'text-slate-400': activeTab !== 'landings' }" class="flex flex-col items-center flex-1 py-1 transition">
+                <i class="fa-solid fa-store text-lg"></i>
+                <span class="text-[10px] mt-1 font-semibold">Продукты</span>
+            </button>
+            <button @click="activeTab = 'profile'" :class="{ 'text-teal-600 font-bold': activeTab === 'profile', 'text-slate-400': activeTab !== 'profile' }" class="flex flex-col items-center flex-1 py-1 transition">
+                <i class="fa-solid fa-user text-lg"></i>
+                <span class="text-[10px] mt-1 font-semibold">Профиль</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- DESKTOP NAVIGATION BAR -->
+    <div class="hidden md:block bg-white border-b border-teal-100 shadow-xs mb-6" x-show="user && user.onboarding_completed === 1" x-cloak>
+        <div class="max-w-4xl mx-auto px-4 flex space-x-8">
+            <button @click="activeTab = 'tracker'" :class="{ 'border-teal-600 text-teal-600 font-bold': activeTab === 'tracker', 'border-transparent text-slate-500 font-medium': activeTab !== 'tracker' }" class="py-3 border-b-2 text-sm transition flex items-center space-x-2">
+                <i class="fa-solid fa-pills"></i>
+                <span>Трекер</span>
+            </button>
+            <button @click="activeTab = 'survey'" :class="{ 'border-teal-600 text-teal-600 font-bold': activeTab === 'survey', 'border-transparent text-slate-500 font-medium': activeTab !== 'survey' }" class="py-3 border-b-2 text-sm transition flex items-center space-x-2">
+                <i class="fa-solid fa-clipboard-question"></i>
+                <span>Опрос и отчёт</span>
+            </button>
+            <button @click="activeTab = 'analyses'" :class="{ 'border-teal-600 text-teal-600 font-bold': activeTab === 'analyses', 'border-transparent text-slate-500 font-medium': activeTab !== 'analyses' }" class="py-3 border-b-2 text-sm transition flex items-center space-x-2">
+                <i class="fa-solid fa-file-medical"></i>
+                <span>Анализы PDF</span>
+            </button>
+            <button @click="activeTab = 'landings'" :class="{ 'border-teal-600 text-teal-600 font-bold': activeTab === 'landings', 'border-transparent text-slate-500 font-medium': activeTab !== 'landings' }" class="py-3 border-b-2 text-sm transition flex items-center space-x-2">
+                <i class="fa-solid fa-store"></i>
+                <span>Лендинги</span>
+            </button>
+            <button @click="activeTab = 'profile'" :class="{ 'border-teal-600 text-teal-600 font-bold': activeTab === 'profile', 'border-transparent text-slate-500 font-medium': activeTab !== 'profile' }" class="py-3 border-b-2 text-sm transition flex items-center space-x-2">
+                <i class="fa-solid fa-user"></i>
+                <span>Профиль</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ADD VITAMIN MODAL -->
+    <div x-show="showAddVitaminModal" x-cloak class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-teal-100">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-lg text-slate-900">Добавить витамин</h3>
+                <button @click="showAddVitaminModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <form @submit.prevent="addVitamin()">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Название витамина / добавки</label>
+                        <input type="text" x-model="newVitamin.name" required class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 outline-none text-sm bg-slate-50/50" placeholder="Витамин D3">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Дозировка</label>
+                        <input type="text" x-model="newVitamin.dosage" required class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 outline-none text-sm bg-slate-50/50" placeholder="2000 МЕ">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Время приёма</label>
+                        <select x-model="newVitamin.time_of_day" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 outline-none text-sm bg-white font-medium">
+                            <option value="Утро">Утро</option>
+                            <option value="День">День</option>
+                            <option value="Вечер">Вечер</option>
+                            <option value="Перед сном">Перед сном</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-teal-200 transition text-sm">Добавить в расписание</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SCRIPT LOGIC -->
+    <script>
+        function app() {
+            return {
+                user: null,
+                authMode: 'login',
+                authEmail: '',
+                authPassword: '',
+                authError: '',
+                activeTab: 'tracker',
+                
+                onboardingStep: 1,
+                
+                // Vitamins
+                selectedDate: new Date().toISOString().split('T')[0],
+                vitamins: [],
+                showAddVitaminModal: false,
+                newVitamin: { name: '', dosage: '', time_of_day: 'Утро' },
+                
+                // Survey
+                surveyStep: 1,
+                surveyAnswers: { sleep: '', energy: '', stress: '', sun: '', goal: '' },
+                existingReport: null,
+                surveyCompleted: false,
+                
+                // Analyses
+                analyses: [],
+                
+                // Profile
+                profileForm: { full_name: '', gender: 'Не указан', age: 25, health_goals: '' },
+                
+                // Notifications
+                notifications: [],
+                unreadCount: 0,
+                
+                init() {
+                    this.checkSession();
+                },
+                
+                checkSession() {
+                    fetch('/api/session')
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.user) {
+                                this.user = data.user;
+                                this.profileForm = {
+                                    full_name: data.user.full_name || '',
+                                    gender: data.user.gender || 'Не указан',
+                                    age: data.user.age || 25,
+                                    health_goals: data.user.health_goals || ''
+                                };
+                                this.loadVitamins();
+                                this.loadSurvey();
+                                this.loadAnalyses();
+                                this.fetchNotifications();
+                            }
+                        });
+                },
+                
+                submitAuth() {
+                    this.authError = '';
+                    const endpoint = this.authMode === 'login' ? '/api/login' : '/api/register';
+                    fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: this.authEmail, password: this.authPassword })
+                    })
+                    .then(res => res.json().then(data => ({ status: res.status, body: data })))
+                    .then(res => {
+                        if (res.status === 200) {
+                            this.user = res.body.user;
+                            this.profileForm = {
+                                full_name: this.user.full_name || '',
+                                gender: this.user.gender || 'Не указан',
+                                age: this.user.age || 25,
+                                health_goals: this.user.health_goals || ''
+                            };
+                            this.loadVitamins();
+                            this.loadSurvey();
+                            this.loadAnalyses();
+                            this.fetchNotifications();
+                        } else {
+                            this.authError = res.body.error || 'Произошла ошибка';
+                        }
+                    });
+                },
+                
+                logout() {
+                    fetch('/api/logout', { method: 'POST' }).then(() => {
+                        this.user = null;
+                        this.authEmail = '';
+                        this.authPassword = '';
+                    });
+                },
+                
+                completeOnboarding() {
+                    fetch('/api/user', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            full_name: this.profileForm.full_name,
+                            gender: this.profileForm.gender,
+                            age: this.profileForm.age,
+                            health_goals: this.profileForm.health_goals,
+                            onboarding_completed: 1
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.user) {
+                            this.user = data.user;
+                        }
+                    });
+                },
+                
+                loadVitamins() {
+                    fetch(`/api/vitamins`)
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.vitamins) {
+                                this.vitamins = data.vitamins.filter(v => v.date === this.selectedDate);
+                            }
+                        });
+                },
+                
+                addVitamin() {
+                    fetch('/api/vitamins', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: this.newVitamin.name,
+                            dosage: this.newVitamin.dosage,
+                            time_of_day: this.newVitamin.time_of_day,
+                            date: this.selectedDate
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(() => {
+                        this.showAddVitaminModal = false;
+                        this.newVitamin = { name: '', dosage: '', time_of_day: 'Утро' };
+                        this.loadVitamins();
+                    });
+                },
+                
+                toggleVitaminStatus(item) {
+                    const newStatus = item.status === 'taken' ? 'pending' : 'taken';
+                    fetch(`/api/vitamins/${item.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: newStatus })
+                    })
+                    .then(() => {
+                        item.status = newStatus;
+                    });
+                },
+                
+                deleteVitamin(id) {
+                    fetch(`/api/vitamins/${id}`, { method: 'DELETE' })
+                        .then(() => {
+                            this.loadVitamins();
+                        });
+                },
+                
+                nextSurveyStep() {
+                    if (this.surveyStep < 5) {
+                        this.surveyStep++;
+                    } else {
+                        fetch('/api/survey', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ answers: this.surveyAnswers })
+                        })
+                        .then(res => res.json())
+                        .then(() => {
+                            this.surveyCompleted = true;
+                            this.loadSurvey();
+                            this.fetchNotifications();
+                        });
+                    }
+                },
+                
+                loadSurvey() {
+                    fetch('/api/survey')
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.survey) {
+                                this.existingReport = data.survey.report_text;
+                                this.surveyCompleted = true;
+                            }
+                        });
+                },
+                
+                retakeSurvey() {
+                    this.existingReport = null;
+                    this.surveyCompleted = false;
+                    this.surveyStep = 1;
+                    this.surveyAnswers = { sleep: '', energy: '', stress: '', sun: '', goal: '' };
+                },
+                
+                loadAnalyses() {
+                    fetch('/api/analyses')
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.analyses) {
+                                this.analyses = data.analyses;
+                            }
+                        });
+                },
+                
+                uploadAnalysis(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    fetch('/api/analyses', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(res => res.json())
+                    .then(() => {
+                        this.loadAnalyses();
+                    });
+                },
+                
+                deleteAnalysis(id) {
+                    fetch(`/api/analyses/${id}`, { method: 'DELETE' })
+                        .then(() => {
+                            this.loadAnalyses();
+                        });
+                },
+                
+                updateProfile() {
+                    fetch('/api/user', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            full_name: this.profileForm.full_name,
+                            gender: this.profileForm.gender,
+                            age: this.profileForm.age,
+                            health_goals: this.profileForm.health_goals,
+                            onboarding_completed: this.user.onboarding_completed
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.user) {
+                            this.user = data.user;
+                            alert('Профиль успешно обновлен!');
+                        }
+                    });
+                },
+                
+                fetchNotifications() {
+                    fetch('/api/notifications')
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.notifications) {
+                                this.notifications = data.notifications;
+                                this.unreadCount = data.notifications.filter(n => n.is_read === 0).length;
+                            }
+                        });
+                },
+                
+                markRead(id) {
+                    fetch(`/api/notifications/${id}/read`, { method: 'PUT' })
+                        .then(() => {
+                            this.fetchNotifications();
+                        });
+                },
+                
+                formatDate(dateStr) {
+                    if (!dateStr) return '';
+                    return new Date(dateStr).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
